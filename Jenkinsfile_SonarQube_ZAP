@@ -30,7 +30,7 @@ pipeline {
         stage('Quality Gate Analysis'){
             steps{
                 script{
-                    timeout(time: 1, unit: 'MINUTES') {
+                    timeout(time: 2, unit: 'MINUTES') {
                     def qg = waitForQualityGate()
                     if (qg.status != 'OK') {
                       error "Pipeline aborted due to quality gate failure: ${qg.status}"
@@ -39,10 +39,20 @@ pipeline {
                 }
             }
         }
+        stage('Test Application'){
+            steps{
+                sh 'mvn clean test'
+            }
+        }
         stage('Build Application'){
             steps{
                 //sh 'chmod +x mvnw'
-                sh 'mvn clean install'
+                // sh "sed -i 's|spring.datasource.url = jdbc:mysql://localhost:3306/sparklmsdb?useSSL=true|spring.datasource.url = jdbc:mysql://mysql-service:3306/sparklmsdb?useSSL=true|g' src/main/resources/application.properties"
+                withCredentials([string(credentialsId: 'sedstring', variable: 'NEW_HOST')]) {
+                    sh "sed -i 's|spring.datasource.url = jdbc:mysql://localhost:3306/sparklmsdb?useSSL=true|spring.datasource.url = $NEW_HOST|g' src/main/resources/application.properties"
+                }
+                
+                sh 'mvn clean install -DskipTests'
             }
         }
  
@@ -56,7 +66,6 @@ pipeline {
         stage('Push Image to DockerHub') {
             steps {
                 script{
-                   
                     withDockerRegistry([ credentialsId: "dockerhub-login", url: "" ]) {
                         new_image.push("${env.IMAGE_TAG}")
                         new_image.push('latest')
